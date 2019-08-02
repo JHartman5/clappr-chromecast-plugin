@@ -113,6 +113,8 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	var DEFAULT_CLAPPR_APP_ID = '9DFB77C0';
 
+	var DEFAULT_MESSAGE_NAMESPACE = 'clappr-chromecast-plugin';
+
 	var MIMETYPES = {
 	  'mp4': 'video/mp4',
 	  'ogg': 'video/ogg',
@@ -203,6 +205,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.bootTryDelay = this.options.bootTryDelay || 500; // Default is 500 milliseconds between each attempt
 	    this.bootMaxTryCount = this.options.bootMaxTryCount || 6; // Default is 6 attempts (3 seconds)
 	    this.bootTryCount = 0;
+	    this.textTracks = [];
+	    this.messageNamespace = this.options.customNamespace || DEFAULT_MESSAGE_NAMESPACE;
 
 	    if (this.isBootable()) {
 	      this.appId = this.options.appId || DEFAULT_CLAPPR_APP_ID;
@@ -246,8 +250,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	      }
 
 	      // Chrome greater than or equals to 72
-	      // require secure page
-	      return this.isSecure();
+	      // require secure page or localhost
+	      return this.isSecure() || this.isLocalhost();
+	    }
+	  }, {
+	    key: 'isLocalhost',
+	    value: function isLocalhost() {
+	      return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 	    }
 	  }, {
 	    key: 'isSecure',
@@ -318,6 +327,26 @@ return /******/ (function(modules) { // webpackBootstrap
 	      }
 	    }
 	  }, {
+	    key: 'enableCaptions',
+	    value: function enableCaptions(enabled) {
+	      if (!this.session) return;
+	      var enabledTextTrackIDs = [];
+	      if (enabled && this.textTracks && this.textTracks.length > 0) {
+	        enabledTextTrackIDs = [this.textTracks[0].id];
+	      }
+	      this.session.sendMessage('urn:x-cast:' + this.messageNamespace + ':active-text-tracks', enabledTextTrackIDs);
+	      this.core.getCurrentContainer().trigger(_clappr.Events.CONTAINER_SUBTITLE_CHANGED, { id: enabled ? this.textTracks[0].id : -1 });
+	    }
+	  }, {
+	    key: 'updateCCTrackID',
+	    value: function updateCCTrackID(trackID) {
+	      if (trackID !== -1) {
+	        this.enableCaptions(true);
+	      } else {
+	        this.enableCaptions(false);
+	      }
+	    }
+	  }, {
 	    key: 'initializeCastApi',
 	    value: function initializeCastApi() {
 	      var _this3 = this;
@@ -353,6 +382,20 @@ return /******/ (function(modules) { // webpackBootstrap
 	      }
 	    }
 	  }, {
+	    key: 'onSessionTextTracks',
+	    value: function onSessionTextTracks(tracks) {
+	      this.textTracks = tracks.map(function (t) {
+	        return { id: t.trackId, name: t.name, track: t };
+	      });
+	      if (this.textTracks.length > 0) {
+	        if (this.playbackProxy) {
+	          this.playbackProxy._closedCaptionsTracks = this.textTracks;
+	        }
+	        this.trigger(_clappr.Events.PLAYBACK_SUBTITLE_AVAILABLE);
+	        this.updateCCTrackID(this.core.getCurrentContainer().closedCaptionsTrackId);
+	      }
+	    }
+	  }, {
 	    key: 'receiverListener',
 	    value: function receiverListener(e) {
 	      if (e === chrome.cast.ReceiverAvailability.AVAILABLE) {
@@ -384,6 +427,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'loadMediaSuccess',
 	    value: function loadMediaSuccess(how, mediaSession) {
+	      var _this4 = this;
+
 	      _clappr.Log.debug(this.name, 'new media session', mediaSession, '(', how, ')');
 
 	      this.originalPlayback = this.playback;
@@ -392,7 +437,11 @@ return /******/ (function(modules) { // webpackBootstrap
 	        currentMedia: mediaSession,
 	        mediaControl: this.core.mediaControl,
 	        poster: this.options.poster || this.core.options.poster,
-	        settings: this.originalPlayback.settings
+	        settings: this.originalPlayback.settings,
+	        ccTracks: this.textTracks,
+	        updateCCTrackID: function updateCCTrackID(id) {
+	          return _this4.updateCCTrackID(id);
+	        }
 	      });
 	      this.src = this.originalPlayback.src;
 	      this.playbackProxy = new _chromecast_playback2['default'](options);
@@ -418,14 +467,17 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'newSession',
 	    value: function newSession(session) {
-	      var _this4 = this;
+	      var _this5 = this;
 
 	      this.session = session;
 	      this.deviceState = DEVICE_STATE.ACTIVE;
 	      this.renderConnected();
 
 	      session.addUpdateListener(function () {
-	        return _this4.sessionUpdateListener();
+	        return _this5.sessionUpdateListener();
+	      });
+	      session.addMessageListener('urn:x-cast:' + this.messageNamespace + ':text-tracks', function (_, tracksJSON) {
+	        return _this5.onSessionTextTracks(JSON.parse(tracksJSON));
 	      });
 
 	      this.containerPlay();
@@ -461,7 +513,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'loadMedia',
 	    value: function loadMedia() {
-	      var _this5 = this;
+	      var _this6 = this;
 
 	      this.container.pause();
 	      var src = this.container.options.src;
@@ -473,9 +525,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        request.currentTime = this.currentTime;
 	      }
 	      this.session.loadMedia(request, function (mediaSession) {
-	        return _this5.loadMediaSuccess('loadMedia', mediaSession);
+	        return _this6.loadMediaSuccess('loadMedia', mediaSession);
 	      }, function (e) {
-	        return _this5.loadMediaError(e);
+	        return _this6.loadMediaError(e);
 	      });
 	    }
 	  }, {
@@ -547,25 +599,25 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'click',
 	    value: function click() {
-	      var _this6 = this;
+	      var _this7 = this;
 
 	      this.currentTime = this.container.getCurrentTime();
 	      this.container.pause();
 	      chrome.cast.requestSession(function (session) {
-	        return _this6.launchSuccess(session);
+	        return _this7.launchSuccess(session);
 	      }, function (e) {
-	        return _this6.launchError(e);
+	        return _this7.launchError(e);
 	      });
 	      if (!this.session) {
 	        (function () {
 	          var position = 0;
 	          var connectingIcons = [_publicIc_cast0_24dpSvg2['default'], _publicIc_cast1_24dpSvg2['default'], _publicIc_cast2_24dpSvg2['default']];
-	          clearInterval(_this6.connectAnimInterval);
-	          _this6.connectAnimInterval = setInterval(function () {
-	            _this6.$el.html(connectingIcons[position]);
+	          clearInterval(_this7.connectAnimInterval);
+	          _this7.connectAnimInterval = setInterval(function () {
+	            _this7.$el.html(connectingIcons[position]);
 	            position = (position + 1) % 3;
 	          }, 600);
-	          _this6.core.mediaControl.setKeepVisible();
+	          _this7.core.mediaControl.setKeepVisible();
 	        })();
 	      }
 	    }
@@ -704,6 +756,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    this.settings['default'] && (this.settings['default'] = this.settings['default'].filter(noVolume));
 	    this.settings.left && (this.settings.left = this.settings.left.filter(noVolume));
 	    this.settings.right && (this.settings.right = this.settings.right.filter(noVolume));
+	    this._closedCaptionsTracks = options.ccTracks || [];
+	    this._ccTrackId = -1;
+	    this._updateCCTrackID = options.updateCCTrackID;
 	  }
 
 	  _createClass(ChromecastPlayback, [{
@@ -842,6 +897,20 @@ return /******/ (function(modules) { // webpackBootstrap
 	    key: 'hide',
 	    value: function hide() {
 	      this.$el.hide();
+	    }
+	  }, {
+	    key: 'closedCaptionsTracks',
+	    get: function get() {
+	      return this._closedCaptionsTracks;
+	    }
+	  }, {
+	    key: 'closedCaptionsTrackId',
+	    get: function get() {
+	      return this._ccTrackId;
+	    },
+	    set: function set(trackID) {
+	      this._ccTrackId = trackID;
+	      this._updateCCTrackID(trackID);
 	    }
 	  }]);
 
