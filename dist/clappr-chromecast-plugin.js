@@ -327,41 +327,54 @@ return /******/ (function(modules) { // webpackBootstrap
 	      }
 	    }
 	  }, {
-	    key: 'enableCaptions',
-	    value: function enableCaptions(enabled) {
-	      if (!this.session) return;
-	      var enabledTextTrackIDs = [];
-	      if (enabled && this.textTracks && this.textTracks.length > 0) {
-	        enabledTextTrackIDs = [this.textTracks[0].id];
-	      }
-	      this.session.sendMessage('urn:x-cast:' + this.messageNamespace + ':active-text-tracks', enabledTextTrackIDs);
-	      this.core.getCurrentContainer().trigger(_clappr.Events.CONTAINER_SUBTITLE_CHANGED, { id: enabled ? this.textTracks[0].id : -1 });
-	    }
-	  }, {
 	    key: 'updateCCTrackID',
 	    value: function updateCCTrackID(trackID) {
+	      var _this3 = this;
+
 	      if (trackID !== -1) {
-	        this.enableCaptions(true);
-	      } else {
-	        this.enableCaptions(false);
+	        var _ret = (function () {
+	          var found = false;
+	          _this3.textTracks.forEach(function (t) {
+	            return found = found || t.id === trackID;
+	          });
+	          if (!found) {
+	            console.warn('Failed to enable text track with ID ' + trackID + ', as it does not exist.');
+	            return {
+	              v: undefined
+	            };
+	          }
+	        })();
+
+	        if (typeof _ret === 'object') return _ret.v;
+	      }
+	      var enabledTextTrackIDs = [];
+	      if (trackID !== -1) {
+	        enabledTextTrackIDs = [trackID];
+	      }
+	      if (this.session) {
+	        this.session.sendMessage('urn:x-cast:' + this.messageNamespace + ':active-text-tracks', enabledTextTrackIDs);
+	      }
+	      var container = this.core.getCurrentContainer();
+	      if (container) {
+	        container.trigger(_clappr.Events.CONTAINER_SUBTITLE_CHANGED, { id: trackID });
 	      }
 	    }
 	  }, {
 	    key: 'initializeCastApi',
 	    value: function initializeCastApi() {
-	      var _this3 = this;
+	      var _this4 = this;
 
 	      var autoJoinPolicy = chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED;
 	      var sessionRequest = new chrome.cast.SessionRequest(this.appId);
 	      var apiConfig = new chrome.cast.ApiConfig(sessionRequest, function (session) {
-	        return _this3.sessionListener(session);
+	        return _this4.sessionListener(session);
 	      }, function (e) {
-	        return _this3.receiverListener(e);
+	        return _this4.receiverListener(e);
 	      }, autoJoinPolicy);
 	      chrome.cast.initialize(apiConfig, function () {
-	        return _clappr.Log.debug(_this3.name, 'init success');
+	        return _clappr.Log.debug(_this4.name, 'init success');
 	      }, function () {
-	        return _clappr.Log.warn(_this3.name, 'init error');
+	        return _clappr.Log.warn(_this4.name, 'init error');
 	      });
 	    }
 	  }, {
@@ -427,7 +440,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'loadMediaSuccess',
 	    value: function loadMediaSuccess(how, mediaSession) {
-	      var _this4 = this;
+	      var _this5 = this;
 
 	      _clappr.Log.debug(this.name, 'new media session', mediaSession, '(', how, ')');
 
@@ -440,7 +453,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	        settings: this.originalPlayback.settings,
 	        ccTracks: this.textTracks,
 	        updateCCTrackID: function updateCCTrackID(id) {
-	          return _this4.updateCCTrackID(id);
+	          return _this5.updateCCTrackID(id);
 	        }
 	      });
 	      this.src = this.originalPlayback.src;
@@ -467,17 +480,17 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'newSession',
 	    value: function newSession(session) {
-	      var _this5 = this;
+	      var _this6 = this;
 
 	      this.session = session;
 	      this.deviceState = DEVICE_STATE.ACTIVE;
 	      this.renderConnected();
 
 	      session.addUpdateListener(function () {
-	        return _this5.sessionUpdateListener();
+	        return _this6.sessionUpdateListener();
 	      });
 	      session.addMessageListener('urn:x-cast:' + this.messageNamespace + ':text-tracks', function (_, tracksJSON) {
-	        return _this5.onSessionTextTracks(JSON.parse(tracksJSON));
+	        return _this6.onSessionTextTracks(JSON.parse(tracksJSON));
 	      });
 
 	      this.containerPlay();
@@ -513,7 +526,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'loadMedia',
 	    value: function loadMedia() {
-	      var _this6 = this;
+	      var _this7 = this;
 
 	      this.container.pause();
 	      var src = this.container.options.src;
@@ -525,9 +538,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	        request.currentTime = this.currentTime;
 	      }
 	      this.session.loadMedia(request, function (mediaSession) {
-	        return _this6.loadMediaSuccess('loadMedia', mediaSession);
+	        return _this7.loadMediaSuccess('loadMedia', mediaSession);
 	      }, function (e) {
-	        return _this6.loadMediaError(e);
+	        return _this7.loadMediaError(e);
 	      });
 	    }
 	  }, {
@@ -599,25 +612,25 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }, {
 	    key: 'click',
 	    value: function click() {
-	      var _this7 = this;
+	      var _this8 = this;
 
 	      this.currentTime = this.container.getCurrentTime();
 	      this.container.pause();
 	      chrome.cast.requestSession(function (session) {
-	        return _this7.launchSuccess(session);
+	        return _this8.launchSuccess(session);
 	      }, function (e) {
-	        return _this7.launchError(e);
+	        return _this8.launchError(e);
 	      });
 	      if (!this.session) {
 	        (function () {
 	          var position = 0;
 	          var connectingIcons = [_publicIc_cast0_24dpSvg2['default'], _publicIc_cast1_24dpSvg2['default'], _publicIc_cast2_24dpSvg2['default']];
-	          clearInterval(_this7.connectAnimInterval);
-	          _this7.connectAnimInterval = setInterval(function () {
-	            _this7.$el.html(connectingIcons[position]);
+	          clearInterval(_this8.connectAnimInterval);
+	          _this8.connectAnimInterval = setInterval(function () {
+	            _this8.$el.html(connectingIcons[position]);
 	            position = (position + 1) % 3;
 	          }, 600);
-	          _this7.core.mediaControl.setKeepVisible();
+	          _this8.core.mediaControl.setKeepVisible();
 	        })();
 	      }
 	    }
