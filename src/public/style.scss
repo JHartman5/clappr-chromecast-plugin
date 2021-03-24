@@ -1,11 +1,9 @@
-@import 'compass/css3';
-@import 'fontsmoothing';
-
 .chromecast-playback {
   height: 100%;
   width: 100%;
 
-  .chromecast-playback-background, .chromecast-playback-overlay {
+  .chromecast-playback-background,
+  .chromecast-playback-overlay {
     position: absolute;
     height: 100%;
     width: 100%;
@@ -35,12 +33,15 @@
   vertical-align: middle;
   text-align: left;
   cursor: pointer;
-  @include font-smoothing(antialiased);
-  @include transition(all 0.1s ease);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-transition: all 0.1s ease;
+  -o-transition: all 0.1s ease;
+  transition: all 0.1s ease;
 
   &:hover {
     opacity: 0.75;
-    text-shadow: rgba(255,255,255,0.8) 0 0 5px;
+    text-shadow: rgba(255, 255, 255, 0.8) 0 0 5px;
   }
 
   &:focus {
@@ -50,7 +51,9 @@
   svg {
     width: 24px;
     height: 24px;
-    #cast, #cast-on, #Path {
+    #cast,
+    #cast-on,
+    #Path {
       fill: #fff;
       stroke: #fff;
       stroke-width: 0.5px;

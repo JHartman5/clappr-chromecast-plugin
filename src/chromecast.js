@@ -1,185 +1,236 @@
-import {Browser, Events, Log, Styler, UICorePlugin} from 'clappr'
-import ChromecastPlayback from './chromecast_playback'
-import chromecastStyle from './public/style.scss'
-import assign from 'lodash.assign'
-import castIconSvg from './public/ic_cast_24dp.svg'
-import connecting1IconSvg from './public/ic_cast0_24dp.svg'
-import connecting2IconSvg from './public/ic_cast1_24dp.svg'
-import connecting3IconSvg from './public/ic_cast2_24dp.svg'
-import connectedIconSvg from './public/ic_cast_connected_24dp.svg'
+import { Browser, Events, Log, Styler, UICorePlugin } from "@clappr/core";
+import ChromecastPlayback from "./chromecast_playback";
+import chromecastStyle from "./public/style.scss";
+import assign from "lodash.assign";
+import castIconSvg from "./public/ic_cast_24dp.svg";
+import connecting1IconSvg from "./public/ic_cast0_24dp.svg";
+import connecting2IconSvg from "./public/ic_cast1_24dp.svg";
+import connecting3IconSvg from "./public/ic_cast2_24dp.svg";
+import connectedIconSvg from "./public/ic_cast_connected_24dp.svg";
 
 const DEVICE_STATE = {
-  'IDLE' : 0,
-  'ACTIVE' : 1,
-  'WARNING' : 2,
-  'ERROR' : 3
-}
+  IDLE: 0,
+  ACTIVE: 1,
+  WARNING: 2,
+  ERROR: 3,
+};
 
-const DEFAULT_CLAPPR_APP_ID = '9DFB77C0'
+const DEFAULT_CLAPPR_APP_ID = "9DFB77C0";
 
-const DEFAULT_MESSAGE_NAMESPACE = 'clappr-chromecast-plugin';
+const DEFAULT_MESSAGE_NAMESPACE = "clappr-chromecast-plugin";
 
 const MIMETYPES = {
-  'mp4': 'video/mp4',
-  'ogg': 'video/ogg',
-  '3gpp': 'video/3gpp',
-  'webm': 'video/webm',
-  'mkv': 'video/x-matroska',
-  'm3u8': 'application/x-mpegurl',
-  'mpd': 'application/dash+xml'
-}
-MIMETYPES['ogv'] = MIMETYPES['ogg']
-MIMETYPES['3gp'] = MIMETYPES['3gpp']
+  mp4: "video/mp4",
+  ogg: "video/ogg",
+  "3gpp": "video/3gpp",
+  webm: "video/webm",
+  mkv: "video/x-matroska",
+  m3u8: "application/x-mpegurl",
+  mpd: "application/dash+xml",
+};
+MIMETYPES["ogv"] = MIMETYPES["ogg"];
+MIMETYPES["3gp"] = MIMETYPES["3gpp"];
 
 export default class ChromecastPlugin extends UICorePlugin {
-  static get Movie() { return 'movie' }
-  static get TvShow() { return 'tv_show' }
-  static get Generic() { return 'none' }
+  static get Movie() {
+    return "movie";
+  }
+  static get TvShow() {
+    return "tv_show";
+  }
+  static get Generic() {
+    return "none";
+  }
 
-  static get version() { return VERSION }
-  get version() { return VERSION }
+  static get version() {
+    return VERSION;
+  }
+  get version() {
+    return VERSION;
+  }
 
-  get name() { return 'chromecast' }
-  get tagName() { return 'button' }
+  get name() {
+    return "chromecast";
+  }
+  get tagName() {
+    return "button";
+  }
   get attributes() {
     return {
-      'class' : 'chromecast-button',
-      'type'  : 'button'
-    }
+      class: "chromecast-button",
+      type: "button",
+    };
   }
   get events() {
     return {
-      'click': 'click'
-    }
+      click: "click",
+    };
   }
-  get options() { return this.core.options.chromecast || (this.core.options.chromecast = {}) }
+  get options() {
+    return this.core.options.chromecast || (this.core.options.chromecast = {});
+  }
   get container() {
     return this.core.getCurrentContainer
       ? this.core.getCurrentContainer()
-      : this.core.activeContainer // Clappr 0.3.0 or greater
+      : this.core.activeContainer; // Clappr 0.3.0 or greater
   }
   get playback() {
     return this.core.getCurrentPlayback
       ? this.core.getCurrentPlayback()
-      : this.core.activePlayback // Clappr 0.3.0 or greater
+      : this.core.activePlayback; // Clappr 0.3.0 or greater
   }
 
   constructor(core) {
-    super(core)
+    super(core);
 
-    this.bootTryDelay = this.options.bootTryDelay || 500      // Default is 500 milliseconds between each attempt
-    this.bootMaxTryCount = this.options.bootMaxTryCount || 6  // Default is 6 attempts (3 seconds)
-    this.bootTryCount = 0
+    this.bootTryDelay = this.options.bootTryDelay || 500; // Default is 500 milliseconds between each attempt
+    this.bootMaxTryCount = this.options.bootMaxTryCount || 6; // Default is 6 attempts (3 seconds)
+    this.bootTryCount = 0;
     this.textTracks = [];
-    this.messageNamespace = this.options.customNamespace || DEFAULT_MESSAGE_NAMESPACE;
+    this.messageNamespace =
+      this.options.customNamespace || DEFAULT_MESSAGE_NAMESPACE;
 
     if (this.isBootable()) {
-      this.appId = this.options.appId || DEFAULT_CLAPPR_APP_ID
-      this.deviceState = DEVICE_STATE.IDLE
-      this.embedScript()
+      this.appId = this.options.appId || DEFAULT_CLAPPR_APP_ID;
+      this.deviceState = DEVICE_STATE.IDLE;
+      this.embedScript();
     } else {
-      this.disable()
+      this.disable();
     }
   }
 
   bindEvents() {
-    this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_RENDERED, this.render)
+    this.listenTo(
+      this.core.mediaControl,
+      Events.MEDIACONTROL_RENDERED,
+      this.render
+    );
 
     if (Events.CORE_ACTIVE_CONTAINER_CHANGED) {
       // Clappr 0.3.0 or greater
-      this.listenTo(this.core, Events.CORE_ACTIVE_CONTAINER_CHANGED, this.containerChanged)
+      this.listenTo(
+        this.core,
+        Events.CORE_ACTIVE_CONTAINER_CHANGED,
+        this.containerChanged
+      );
     } else {
-      this.listenTo(this.core.mediaControl, Events.MEDIACONTROL_CONTAINERCHANGED, this.containerChanged)
+      this.listenTo(
+        this.core.mediaControl,
+        Events.MEDIACONTROL_CONTAINERCHANGED,
+        this.containerChanged
+      );
     }
 
     if (this.container) {
-      this.listenTo(this.container, Events.CONTAINER_TIMEUPDATE, this.containerTimeUpdate)
-      this.listenTo(this.container, Events.CONTAINER_PLAY, this.containerPlay)
-      this.listenTo(this.container, Events.CONTAINER_ENDED, this.sessionStopped)
+      this.listenTo(
+        this.container,
+        Events.CONTAINER_TIMEUPDATE,
+        this.containerTimeUpdate
+      );
+      this.listenTo(this.container, Events.CONTAINER_PLAY, this.containerPlay);
+      this.listenTo(
+        this.container,
+        Events.CONTAINER_ENDED,
+        this.sessionStopped
+      );
     }
   }
 
   isBootable() {
     // Browser must be Chrome
     if (!Browser.isChrome) {
-      return false
+      return false;
     }
 
     // Chrome lesser than or equals to 71
     // does not require secure page
     if (Browser.version <= 71) {
-      return true
+      return true;
     }
 
     // Chrome greater than or equals to 72
     // require secure page or localhost
-    return this.isSecure() || this.isLocalhost()
+    return this.isSecure() || this.isLocalhost();
   }
 
   isLocalhost() {
-    return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+    return (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    );
   }
 
   isSecure() {
-    return window.location.protocol === 'https:'
+    return window.location.protocol === "https:";
   }
 
   enable() {
-    super.enable()
-    this.render()
-    this.embedScript()
+    super.enable();
+    this.render();
+    this.embedScript();
   }
 
   embedScript() {
-    if (!window.chrome || !window.chrome.cast || !window.chrome.cast.isAvailable) {
-      let script = document.createElement('script')
-      script.setAttribute('type', 'text/javascript')
-      script.setAttribute('async', 'async')
-      script.setAttribute('src', 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js')
-      script.onload = () => this.bootstrapCastApi()
-      document.body.appendChild(script)
+    if (
+      !window.chrome ||
+      !window.chrome.cast ||
+      !window.chrome.cast.isAvailable
+    ) {
+      let script = document.createElement("script");
+      script.setAttribute("type", "text/javascript");
+      script.setAttribute("async", "async");
+      script.setAttribute(
+        "src",
+        "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js"
+      );
+      script.onload = () => this.bootstrapCastApi();
+      document.body.appendChild(script);
     } else {
-      this.bootstrapCastApi()
+      this.bootstrapCastApi();
     }
   }
 
   bootstrapCastApi() {
-    this.bootTryCount++
+    this.bootTryCount++;
 
     if (this.bootTryCount > this.bootMaxTryCount) {
-      this.bootTryCount = 0
-      Log.warn('GCastApi bootstrap timeout')
-      this.disable()
-      return
+      this.bootTryCount = 0;
+      Log.warn("GCastApi bootstrap timeout");
+      this.disable();
+      return;
     }
 
     // The "chrome" property may not be available immediately on some iOS devices
     if (window.chrome) {
-      this.bootTryCount = 0
+      this.bootTryCount = 0;
 
       if (window.chrome.cast && window.chrome.cast.isAvailable) {
-        this.appId = this.appId || DEFAULT_CLAPPR_APP_ID
-        this.initializeCastApi()
+        this.appId = this.appId || DEFAULT_CLAPPR_APP_ID;
+        this.initializeCastApi();
       } else {
-        window['__onGCastApiAvailable'] = (loaded, errorInfo) => {
+        window["__onGCastApiAvailable"] = (loaded, errorInfo) => {
           if (loaded) {
-            this.appId = this.appId || DEFAULT_CLAPPR_APP_ID
-            this.initializeCastApi()
+            this.appId = this.appId || DEFAULT_CLAPPR_APP_ID;
+            this.initializeCastApi();
           } else {
-            Log.warn('GCastApi error', errorInfo)
-            this.disable()
+            Log.warn("GCastApi error", errorInfo);
+            this.disable();
           }
-        }
+        };
       }
     } else {
-      setTimeout(() => { this.bootstrapCastApi() }, this.bootTryDelay)
+      setTimeout(() => {
+        this.bootstrapCastApi();
+      }, this.bootTryDelay);
     }
   }
 
   updateCCTrackID(trackID) {
     if (trackID !== -1) {
-      if (this.textTracks.filter(t => t.id === trackID).length === 0) {
-        console.warn(`Failed to enable text track with ID ${trackID}, as it does not exist.`);
+      if (this.textTracks.filter((t) => t.id === trackID).length === 0) {
+        console.warn(
+          `Failed to enable text track with ID ${trackID}, as it does not exist.`
+        );
         return;
       }
     }
@@ -195,74 +246,86 @@ export default class ChromecastPlugin extends UICorePlugin {
     }
     let container = this.core.getCurrentContainer();
     if (container) {
-      container.trigger(Events.CONTAINER_SUBTITLE_CHANGED, {id: trackID});
+      container.trigger(Events.CONTAINER_SUBTITLE_CHANGED, { id: trackID });
     }
   }
 
   initializeCastApi() {
-    let autoJoinPolicy = chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
-    let sessionRequest = new chrome.cast.SessionRequest(this.appId)
-    let apiConfig = new chrome.cast.ApiConfig(sessionRequest,
-      (session) => this.sessionListener(session), (e) => this.receiverListener(e), autoJoinPolicy)
-    chrome.cast.initialize(apiConfig, () => Log.debug(this.name, 'init success'), () => Log.warn(this.name, 'init error'))
+    let autoJoinPolicy = chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED;
+    let sessionRequest = new chrome.cast.SessionRequest(this.appId);
+    let apiConfig = new chrome.cast.ApiConfig(
+      sessionRequest,
+      (session) => this.sessionListener(session),
+      (e) => this.receiverListener(e),
+      autoJoinPolicy
+    );
+    chrome.cast.initialize(
+      apiConfig,
+      () => Log.debug(this.name, "init success"),
+      () => Log.warn(this.name, "init error")
+    );
   }
 
   sessionListener(session) {
-    Log.debug(this.name, 'new session id:' + session.sessionId)
-    this.newSession(session)
+    Log.debug(this.name, "new session id:" + session.sessionId);
+    this.newSession(session);
   }
 
   sessionUpdateListener() {
     if (this.session) {
-      Log.debug(this.name, this.session.status)
+      Log.debug(this.name, this.session.status);
       if (this.session.status === chrome.cast.SessionStatus.STOPPED) {
-        this.sessionStopped()
-        this.session = null
+        this.sessionStopped();
+        this.session = null;
       }
     }
   }
 
   onSessionTextTracks(tracks) {
-    this.textTracks = tracks.map(t => {return {id: t.trackId, name: t.name, track: t};});
+    this.textTracks = tracks.map((t) => {
+      return { id: t.trackId, name: t.name, track: t };
+    });
     if (this.textTracks.length > 0) {
       if (this.playbackProxy) {
         this.playbackProxy._closedCaptionsTracks = this.textTracks;
       }
       this.trigger(Events.PLAYBACK_SUBTITLE_AVAILABLE);
-      this.updateCCTrackID(this.core.getCurrentContainer().closedCaptionsTrackId);
+      this.updateCCTrackID(
+        this.core.getCurrentContainer().closedCaptionsTrackId
+      );
     }
   }
 
   receiverListener(e) {
-    if ( e === chrome.cast.ReceiverAvailability.AVAILABLE ) {
-      Log.debug(this.name, 'receiver found')
-      this.show()
+    if (e === chrome.cast.ReceiverAvailability.AVAILABLE) {
+      Log.debug(this.name, "receiver found");
+      this.show();
     } else {
-      Log.debug(this.name, 'receiver list empty')
-      this.hide()
+      Log.debug(this.name, "receiver list empty");
+      this.hide();
     }
   }
 
   launchSuccess(session) {
-    this.renderConnected()
-    clearInterval(this.connectAnimInterval)
-    this.core.mediaControl.resetKeepVisible()
-    Log.debug(this.name, 'launch success - session: ' + session.sessionId)
-    this.newSession(session)
+    this.renderConnected();
+    clearInterval(this.connectAnimInterval);
+    this.core.mediaControl.resetKeepVisible();
+    Log.debug(this.name, "launch success - session: " + session.sessionId);
+    this.newSession(session);
   }
 
   launchError(e) {
-    Log.debug(this.name, 'error on launch', e)
-    this.renderDisconnected()
-    clearInterval(this.connectAnimInterval)
-    this.core.mediaControl.resetKeepVisible()
-    this.container.play()
+    Log.debug(this.name, "error on launch", e);
+    this.renderDisconnected();
+    clearInterval(this.connectAnimInterval);
+    this.core.mediaControl.resetKeepVisible();
+    this.container.play();
   }
 
   loadMediaSuccess(how, mediaSession) {
-    Log.debug(this.name, 'new media session', mediaSession, '(', how , ')')
+    Log.debug(this.name, "new media session", mediaSession, "(", how, ")");
 
-    this.originalPlayback = this.playback
+    this.originalPlayback = this.playback;
 
     let options = assign({}, this.originalPlayback.options, {
       currentMedia: mediaSession,
@@ -270,194 +333,219 @@ export default class ChromecastPlugin extends UICorePlugin {
       poster: this.options.poster || this.core.options.poster,
       settings: this.originalPlayback.settings,
       ccTracks: this.textTracks,
-      updateCCTrackID: (id) => this.updateCCTrackID(id)
-    })
-    this.src = this.originalPlayback.src
-    this.playbackProxy = new ChromecastPlayback(options)
-    this.playbackProxy.render()
-    this.core.$el.addClass('chromecast-active')
+      updateCCTrackID: (id) => this.updateCCTrackID(id),
+    });
+    this.src = this.originalPlayback.src;
+    this.playbackProxy = new ChromecastPlayback(options);
+    this.playbackProxy.render();
+    this.core.$el.addClass("chromecast-active");
 
-    this.mediaSession = mediaSession
+    this.mediaSession = mediaSession;
 
-    this.originalPlayback.$el.remove()
+    this.originalPlayback.$el.remove();
 
-    let container = this.container
-    container.$el.append(this.playbackProxy.$el)
-    container.stopListening()
-    container.playback = this.playbackProxy
-    container.bindEvents()
-    container.settingsUpdate()
+    let container = this.container;
+    container.$el.append(this.playbackProxy.$el);
+    container.stopListening();
+    container.playback = this.playbackProxy;
+    container.bindEvents();
+    container.settingsUpdate();
   }
 
   loadMediaError(e) {
-    Log.warn(this.name, 'media error', e)
+    Log.warn(this.name, "media error", e);
   }
 
   newSession(session) {
-    this.session = session
-    this.deviceState = DEVICE_STATE.ACTIVE
-    this.renderConnected()
+    this.session = session;
+    this.deviceState = DEVICE_STATE.ACTIVE;
+    this.renderConnected();
 
-    session.addUpdateListener(() => this.sessionUpdateListener())
+    session.addUpdateListener(() => this.sessionUpdateListener());
     session.addMessageListener(
       `urn:x-cast:${this.messageNamespace}:text-tracks`,
       (_, tracksJSON) => this.onSessionTextTracks(JSON.parse(tracksJSON))
     );
 
-    this.containerPlay()
+    this.containerPlay();
   }
 
   sessionStopped() {
-    this.renderDisconnected()
+    this.renderDisconnected();
 
-    let time = this.currentTime
+    let time = this.currentTime;
 
-    let playerState = undefined
+    let playerState = undefined;
     if (this.mediaSession) {
-      playerState = this.mediaSession.playerState
-      this.mediaSession = null
+      playerState = this.mediaSession.playerState;
+      this.mediaSession = null;
     }
 
-    this.core.$el.removeClass('chromecast-active')
-    this.core.load(this.src || this.core.options.sources)
+    this.core.$el.removeClass("chromecast-active");
+    this.core.load(this.src || this.core.options.sources);
 
-    let container = this.container
+    let container = this.container;
 
     if (this.playbackProxy) {
-      if (this.playbackProxy.isPlaying() || playerState === 'PAUSED') {
+      if (this.playbackProxy.isPlaying() || playerState === "PAUSED") {
         container.once(Events.CONTAINER_READY, () => {
-          container.play()
-          container.playback.seek(100 * time / container.getDuration())
-        })
+          container.play();
+          container.playback.seek((100 * time) / container.getDuration());
+        });
       }
-      this.playbackProxy.stop()
+      this.playbackProxy.stop();
     }
   }
 
   loadMedia() {
-    this.container.pause()
-    let src = this.container.options.src
-    Log.debug(this.name, 'loading... ' + src)
-    let mediaInfo = this.createMediaInfo(src)
-    let request = new chrome.cast.media.LoadRequest(mediaInfo)
-    request.autoplay = true
+    this.container.pause();
+    let src = this.container.options.src;
+    Log.debug(this.name, "loading... " + src);
+    let mediaInfo = this.createMediaInfo(src);
+    let request = new chrome.cast.media.LoadRequest(mediaInfo);
+    request.autoplay = true;
     if (this.currentTime) {
-      request.currentTime = this.currentTime
+      request.currentTime = this.currentTime;
     }
-    this.session.loadMedia(request, (mediaSession) => this.loadMediaSuccess('loadMedia', mediaSession), (e) => this.loadMediaError(e))
+    this.session.loadMedia(
+      request,
+      (mediaSession) => this.loadMediaSuccess("loadMedia", mediaSession),
+      (e) => this.loadMediaError(e)
+    );
   }
 
   createMediaInfo(src) {
-    let mimeType = ChromecastPlugin.mimeTypeFor(src)
-    let mediaInfo = new chrome.cast.media.MediaInfo(src)
-    mediaInfo.contentType = this.options.contentType || mimeType
-    mediaInfo.customData = this.options.customData
-    let metadata = this.createMediaMetadata()
-    mediaInfo.metadata = metadata
-    return mediaInfo
+    let mimeType = ChromecastPlugin.mimeTypeFor(src);
+    let mediaInfo = new chrome.cast.media.MediaInfo(src);
+    mediaInfo.contentType = this.options.contentType || mimeType;
+    mediaInfo.customData = this.options.customData;
+    let metadata = this.createMediaMetadata();
+    mediaInfo.metadata = metadata;
+    return mediaInfo;
   }
 
   createMediaMetadata() {
-    this.options.media || (this.options.media = {})
-    let type = this.options.media.type
+    this.options.media || (this.options.media = {});
+    let type = this.options.media.type;
 
-    let metadata = this.createCastMediaMetadata(type)
-    metadata.title = this.options.media.title
-    metadata.subtitle = this.options.media.subtitle
-    metadata.releaseDate = this.options.media.releaseDate
+    let metadata = this.createCastMediaMetadata(type);
+    metadata.title = this.options.media.title;
+    metadata.subtitle = this.options.media.subtitle;
+    metadata.releaseDate = this.options.media.releaseDate;
 
     if (type === ChromecastPlugin.TvShow) {
-      metadata.episode = this.options.media.episode
-      metadata.originalAirdate = this.options.media.originalAirdate
-      metadata.season = this.options.media.season
-      metadata.seriesTitle = this.options.media.seriesTitle
+      metadata.episode = this.options.media.episode;
+      metadata.originalAirdate = this.options.media.originalAirdate;
+      metadata.season = this.options.media.season;
+      metadata.seriesTitle = this.options.media.seriesTitle;
     } else if (type === ChromecastPlugin.Movie) {
-      metadata.studio = this.options.media.studio
+      metadata.studio = this.options.media.studio;
     }
 
     if (this.options.media.images) {
-      metadata.images = this.options.media.images.map((url) => new chrome.cast.Image(url))
+      metadata.images = this.options.media.images.map(
+        (url) => new chrome.cast.Image(url)
+      );
     }
     if (!metadata.images && this.options.poster) {
-      metadata.images = [new chrome.cast.Image(this.options.poster)]
+      metadata.images = [new chrome.cast.Image(this.options.poster)];
     }
     if (!metadata.images && this.core.options.poster) {
-      metadata.images = [new chrome.cast.Image(this.core.options.poster)]
+      metadata.images = [new chrome.cast.Image(this.core.options.poster)];
     }
-    return metadata
+    return metadata;
   }
 
   createCastMediaMetadata(type) {
     switch (type) {
-    case ChromecastPlugin.Movie: return new chrome.cast.media.MovieMediaMetadata()
-    case ChromecastPlugin.TvShow: return new chrome.cast.media.TvShowMediaMetadata()
-    default: return new chrome.cast.media.GenericMediaMetadata()
+      case ChromecastPlugin.Movie:
+        return new chrome.cast.media.MovieMediaMetadata();
+      case ChromecastPlugin.TvShow:
+        return new chrome.cast.media.TvShowMediaMetadata();
+      default:
+        return new chrome.cast.media.GenericMediaMetadata();
     }
   }
 
   show() {
-    this.$el.show()
+    this.$el.show();
   }
 
   hide() {
-    this.$el.hide()
+    this.$el.hide();
   }
 
   click() {
-    this.currentTime = this.container.getCurrentTime()
-    this.container.pause()
-    chrome.cast.requestSession((session) => this.launchSuccess(session), (e) => this.launchError(e))
+    this.currentTime = this.container.getCurrentTime();
+    this.container.pause();
+    chrome.cast.requestSession(
+      (session) => this.launchSuccess(session),
+      (e) => this.launchError(e)
+    );
     if (!this.session) {
-      let position = 0
-      let connectingIcons = [connecting1IconSvg, connecting2IconSvg, connecting3IconSvg]
-      clearInterval(this.connectAnimInterval)
+      let position = 0;
+      let connectingIcons = [
+        connecting1IconSvg,
+        connecting2IconSvg,
+        connecting3IconSvg,
+      ];
+      clearInterval(this.connectAnimInterval);
       this.connectAnimInterval = setInterval(() => {
-        this.$el.html(connectingIcons[position])
-        position = (position + 1) % 3
-      }, 600)
-      this.core.mediaControl.setKeepVisible()
+        this.$el.html(connectingIcons[position]);
+        position = (position + 1) % 3;
+      }, 600);
+      this.core.mediaControl.setKeepVisible();
     }
   }
 
   containerChanged() {
-    this.stopListening()
-    this.bindEvents()
+    this.stopListening();
+    this.bindEvents();
   }
 
   containerTimeUpdate(timeProgress) {
-    this.currentTime = timeProgress.current
+    this.currentTime = timeProgress.current;
   }
 
   containerPlay() {
-    if (this.session && (!this.mediaSession || this.mediaSession.playerState === 'IDLE' || this.mediaSession.playerState === 'PAUSED')) {
-      Log.debug(this.name, 'load media')
-      this.loadMedia()
+    if (
+      this.session &&
+      (!this.mediaSession ||
+        this.mediaSession.playerState === "IDLE" ||
+        this.mediaSession.playerState === "PAUSED")
+    ) {
+      Log.debug(this.name, "load media");
+      this.loadMedia();
     }
   }
 
   renderConnected() {
-    this.$el.html(connectedIconSvg)
+    this.$el.html(connectedIconSvg);
   }
 
   renderDisconnected() {
-    this.$el.html(castIconSvg)
+    this.$el.html(castIconSvg);
   }
 
   render() {
-    this.session ? this.renderConnected() : this.renderDisconnected()
-    this.core.mediaControl.$el.find('.media-control-right-panel[data-media-control]').append(this.$el)
-    this.$style && this.$style.remove()
-    this.$style = Styler.getStyleFor(chromecastStyle, {baseUrl: this.core.options.baseUrl})
-    this.core.$el.append(this.$style)
-    return this
+    this.session ? this.renderConnected() : this.renderDisconnected();
+    this.core.mediaControl.$el
+      .find(".media-control-right-panel[data-media-control]")
+      .append(this.$el);
+    this.$style && this.$style.remove();
+    this.$style = Styler.getStyleFor(chromecastStyle, {
+      baseUrl: this.core.options.baseUrl,
+    });
+    this.core.$el.append(this.$style);
+    return this;
   }
 
   static mimeTypeFor(srcUrl) {
-    let extension = (srcUrl.split('?')[0].match(/.*\.(.*)$/) || [])[1]
+    let extension = (srcUrl.split("?")[0].match(/.*\.(.*)$/) || [])[1];
     if (MIMETYPES[extension]) {
-      return MIMETYPES[extension]
-    } else if (srcUrl.indexOf('.ism') > -1) {
-      return 'application/vnd.ms-sstr+xml'
+      return MIMETYPES[extension];
+    } else if (srcUrl.indexOf(".ism") > -1) {
+      return "application/vnd.ms-sstr+xml";
     }
   }
 }
